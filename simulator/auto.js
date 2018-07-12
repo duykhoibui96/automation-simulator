@@ -32,6 +32,7 @@ export default class Auto {
     let driver
 
     try {
+      debug.log('Kobiton server', kobitonServerConfig)
       driver = wd.promiseChainRemote(kobitonServerConfig)
       driver.on('status', (info) => {
         debug.log(`${this._ns} status:`, info)
@@ -52,7 +53,7 @@ export default class Auto {
         }
         throw err
       }
-
+      console.log('Connected')
       await driver.get('https://www.google.com')
         .waitForElementByName('q')
         .sendKeys('Kobiton')

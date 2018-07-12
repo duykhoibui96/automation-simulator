@@ -86,7 +86,7 @@ export default class Koby extends EventEmitter {
     async _handleMessage(message) {
         debug.log(this._ns, `Receive message from hub: ${JSON.stringify(message)}`)
         const { START_MANUAL, STOP_MANUAL, START_AUTO } = enums.TEST_ACTIONS
-        const { type, quality, fps } = message
+        const { type, timeoutKey, quality, fps, deviceMetricCaptureInterval } = message
 
         switch (type) {
             case START_AUTO:
@@ -94,7 +94,8 @@ export default class Koby extends EventEmitter {
                     await this._startSession(
                         enums.CONNECTION_TYPES.AUTO,
                         {
-                            ...this._authInfo, deviceInfo: this._deviceInfo
+                            ...this._authInfo, appium: this._appium, deviceInfo: this._deviceInfo,
+                            timeoutKey
                         },
                         { json: false, reconnect: false }
                     )
@@ -117,12 +118,12 @@ export default class Koby extends EventEmitter {
     }
 
     async _startSession(type, options, connectionOptions) {
-        // this._sessionConnection = new TcpConnection(type, this._hub, this._authInfo, connectionOptions)
-        // this._sessionConnection
-        //     .on('message', :: this._onHubMessage)
-        // await this._sessionConnection.establish()
+        this._sessionConnection = new TcpConnection(type, this._hub, this._authInfo, connectionOptions)
+        this._sessionConnection
+            .on('message', :: this._onHubMessage)
+        await this._sessionConnection.establish()
 
-        // this._updateStatus(enums.DEVICE_STATES.UTILIZING)
+        this._updateStatus(enums.DEVICE_STATES.UTILIZING)
         console.log('Start automation session')
     }
 

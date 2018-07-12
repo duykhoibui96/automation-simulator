@@ -86,7 +86,7 @@ export default class Koby extends EventEmitter {
   async _handleMessage(message) {
     debug.log(this._ns, `Receive message from hub: ${JSON.stringify(message)}`)
     const { START_MANUAL, STOP_MANUAL, START_AUTO } = enums.TEST_ACTIONS
-    const { type, quality, fps } = message
+    const { type, timeoutKey, quality, fps, deviceMetricCaptureInterval } = message
 
     switch (type) {
       case START_MANUAL:
@@ -116,15 +116,10 @@ export default class Koby extends EventEmitter {
           await this._startSession(
             enums.CONNECTION_TYPES.AUTO,
             {
-              ...this._authInfo,
-              hubInfo: this._hub,
-              userInfo: this._userInfo,
-              deviceInfo: this._deviceInfo,
-              quality,
-              fps,
-              tmpDir: this._tmpDir,
-              portForwarder: this._portForwarder
-            }
+              ...this._authInfo, appium: this._appium, deviceInfo: this._deviceInfo,
+              timeoutKey, tmpDir: this._tmpDir, javaHome: this._settings.android.jdk
+            },
+            { json: false, reconnect: false }
           )
         }
         catch (ignored) {
