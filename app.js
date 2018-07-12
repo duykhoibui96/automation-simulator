@@ -1,8 +1,9 @@
-import {debug} from '@kobiton/core-util'
+import { debug } from '@kobiton/core-util'
 import config from './config'
 import api from './utils/api'
 import Kobies from './simulator/kobies'
 import Koby from './simulator/koby'
+import KobyAuto from './simulator/koby-auto'
 import Auto from './simulator/auto'
 import Manual from './simulator/manual'
 
@@ -16,7 +17,7 @@ const deviceInfo = {
   udid: 'khoibui-device',
   deviceName: 'TaSi 01',
   deviceType: 'iPhone',
-  installedBrowsers: [{name: 'safari'}],
+  installedBrowsers: [{ name: 'safari' }],
   isEmulator: false,
   isHidden: false,
   modelName: 'D10AP',
@@ -47,7 +48,7 @@ async function addDevice() {
         version: '1.0.0',
         buildNumber: 'N/A',
         network: {
-          address: '192.168.102.25',
+          address: '192.168.36.23',
           netmask: '255.255.255.0',
           family: 'IPv4',
           mac: '4c:8d:79:ea:96:fe',
@@ -62,11 +63,19 @@ async function addDevice() {
 
 async function main() {
 
+  let isManual = true
+  process.argv.forEach((val, index, array) => {
+    if (index === 2 && val === 'auto')
+      isManual = false
+  })
+
   await addDevice()
 
-  const targetDeviceId = 106393 //Device ID to be simulate
-  await simulateManualSession(targetDeviceId)
-  //await simulateAutoSession(targetDeviceId)
+  const targetDeviceId = 107198 //Device ID to be simulate
+  if (isManual)
+    await simulateManualSession(targetDeviceId)
+  else
+    await simulateAutoSession(targetDeviceId)
 
   debug.log('Session ENDED - Exiting..')
 }
@@ -100,7 +109,7 @@ function simulateManualSession(deviceId) {
 
 function simulateAutoSession(deviceId) {
   return new BPromise(async (resolve, reject) => {
-    const koby = new Koby({
+    const koby = new KobyAuto({
       deviceInfo,
       token: config.token
     })

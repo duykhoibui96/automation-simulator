@@ -23,33 +23,34 @@ export default class Manual {
   }
 
   async _onStartManualDone() {
+    const delayTime = 2000
     debug.log(this._ns, 'NOOP')
     this._ws.sendMessage({
       type: 'NOOP'
     })
 
-    await BPromise.delay(1000)
+    await BPromise.delay(delayTime)
     debug.log(this._ns, 'Press Home')
     this._ws.sendMessage({
       type: 'PRESS_BUTTON',
       value: 'HOME'
     })
 
-    await BPromise.delay(2000)
+    await BPromise.delay(delayTime)
     debug.log(this._ns, 'Press Home 2nd')
     this._ws.sendMessage({
       type: 'PRESS_BUTTON',
       value: 'HOME'
     })
 
-    await BPromise.delay(2000)
+    await BPromise.delay(delayTime)
     debug.log(this._ns, 'Press Home 3rd')
     this._ws.sendMessage({
       type: 'PRESS_BUTTON',
       value: 'HOME'
     })
 
-    await BPromise.delay(2000)
+    await BPromise.delay(delayTime)
     debug.log(this._ns, 'Stop manual')
     this._ws.sendMessage({
       type: 'STOP_MANUAL'

@@ -3,12 +3,12 @@ import EventEmitter from 'events'
 import omit from 'lodash/omit'
 import request from 'request'
 import * as enums from '@kobiton/core-util/enum'
-import {debug, retry} from '@kobiton/core-util'
+import { debug, retry } from '@kobiton/core-util'
 import config from '../config'
 import api from '../utils/api'
 import TcpConnection from '../core/connection/tcp'
 
-const requestAsync = BPromise.promisify(request, {multiArgs: true})
+const requestAsync = BPromise.promisify(request, { multiArgs: true })
 
 const TOUCH_ACTIONS = [
   enums.TEST_ACTIONS.TOUCH_MOVE,
@@ -25,12 +25,12 @@ const PRE_SCREENSHOT_ACTIONS = [
 ]
 
 export default class Koby extends EventEmitter {
-  constructor({deviceInfo, token}) {
+  constructor({ deviceInfo, token }) {
     super()
     this._ns = `Koby_${deviceInfo.udid}`
     this._deviceInfo = deviceInfo
     this._token = token
-    this._authInfo = {token, udid: deviceInfo.udid}
+    this._authInfo = { token, udid: deviceInfo.udid }
     this._sessionConnection = null
   }
 
@@ -38,7 +38,7 @@ export default class Koby extends EventEmitter {
     await this._updateStatus(enums.DEVICE_STATES.ACTIVATING)
     const getHub = () => {
       debug.log('activate getHub....')
-      return api.get({url: 'hubs/which', token: this._authInfo.token})
+      return api.get({ url: 'hubs/which', token: this._authInfo.token })
     }
     this._hub = await retry(getHub, -1, 5000)
     await this._establishControlConnection()
@@ -58,19 +58,19 @@ export default class Koby extends EventEmitter {
   }
 
   async _establishControlConnection() {
-    const connectionInfo = {runningSession: !!this._session, ...this._authInfo}
+    const connectionInfo = { runningSession: !!this._session, ...this._authInfo }
 
     await this._disconnectControlConnection()
     this._controlConnection = new TcpConnection(
       enums.CONNECTION_TYPES.CONTROL, this._hub, connectionInfo)
     this._controlConnection
-      .on('error', ({message}) => {
+      .on('error', ({ message }) => {
         debug.error(this._ns, `Control connection error: ${message}`)
         if (message === 'not-authorized') {
           this.emit('not-authorized')
         }
       })
-      .on('message', ::this._handleMessage)
+      .on('message', :: this._handleMessage)
     await this._controlConnection.establish()
   }
 
@@ -85,14 +85,36 @@ export default class Koby extends EventEmitter {
 
   async _handleMessage(message) {
     debug.log(this._ns, `Receive message from hub: ${JSON.stringify(message)}`)
-    const {START_MANUAL, STOP_MANUAL} = enums.TEST_ACTIONS
-    const {type, quality, fps} = message
+    const { START_MANUAL, STOP_MANUAL, START_AUTO } = enums.TEST_ACTIONS
+    const { type, quality, fps } = message
 
     switch (type) {
       case START_MANUAL:
         try {
           await this._startSession(
             enums.CONNECTION_TYPES.MANUAL,
+            {
+              ...this._authInfo,
+              hubInfo: this._hub,
+              userInfo: this._userInfo,
+              deviceInfo: this._deviceInfo,
+              quality,
+              fps,
+              tmpDir: this._tmpDir,
+              portForwarder: this._portForwarder
+            }
+          )
+        }
+        catch (ignored) {
+          // Writes log for supporting investigating
+          debug.error(this._ns, `Unhandled error while processing message ${START_MANUAL}`)
+          debug.error(this._ns, ignored)
+        }
+        break
+      case START_AUTO:
+        try {
+          await this._startSession(
+            enums.CONNECTION_TYPES.AUTO,
             {
               ...this._authInfo,
               hubInfo: this._hub,
@@ -125,7 +147,7 @@ export default class Koby extends EventEmitter {
   async _startSession(type, options, connectionOptions) {
     this._sessionConnection = new TcpConnection(type, this._hub, this._authInfo, connectionOptions)
     this._sessionConnection
-      .on('message', ::this._onHubMessage)
+      .on('message', :: this._onHubMessage)
     await this._sessionConnection.establish()
 
     this._updateStatus(enums.DEVICE_STATES.UTILIZING)
@@ -136,7 +158,7 @@ export default class Koby extends EventEmitter {
 
     await this._preprocessAction(message)
 
-    const {type} = message
+    const { type } = message
     switch (type) {
       case enums.TEST_STATES.MANUAL_BEGAN:
         this._sessionId = message.sessionId
@@ -150,15 +172,15 @@ export default class Koby extends EventEmitter {
   }
 
   async _preprocessAction(message) {
-    let {type, value, touch} = message
+    let { type, value, touch } = message
     let recordAction = false
     let recordValue = value
 
     if (TOUCH_ACTIONS.includes(type)) {
-      const {x, y, duration} = message
+      const { x, y, duration } = message
 
       if (type === enums.TEST_ACTIONS.TOUCH_DOWN) {
-        this._lastTouchDownPoint = {x, y}
+        this._lastTouchDownPoint = { x, y }
       }
       else if (type === enums.TEST_ACTIONS.TOUCH_UP) {
         recordAction = true
@@ -192,7 +214,7 @@ export default class Koby extends EventEmitter {
       if (touch === enums.TEST_ACTIONS.TOUCH_UP) {
         recordAction = true
         recordValue = omit(message, 'type', 'from1', 'from2')
-        recordValue = {...recordValue, ...this._zoomInfo}
+        recordValue = { ...recordValue, ...this._zoomInfo }
       }
       else if (touch === enums.TEST_ACTIONS.TOUCH_DOWN) {
       }
@@ -207,12 +229,12 @@ export default class Koby extends EventEmitter {
 
     if (recordAction) {
       if (type === enums.TEST_ACTIONS.SIMULATE_GEO_LOCATION) {
-        const {lat, long} = message
-        recordValue = {lat, long}
+        const { lat, long } = message
+        recordValue = { lat, long }
       }
       else if (type === enums.DEVICE_SERVICES.TIME_ZONE_SETTING) {
-        const {timezone} = message
-        recordValue = {timezone}
+        const { timezone } = message
+        recordValue = { timezone }
       }
 
       await this._recordAction(type, recordValue)
@@ -226,11 +248,11 @@ export default class Koby extends EventEmitter {
   async _getCommandId(action, value) {
     if (!this._baseUrl) return
 
-    const [{statusCode}, {id}] = await requestAsync({
+    const [{ statusCode }, { id }] = await requestAsync({
       url: `${this._baseUrl}/commands`,
       method: 'POST',
       json: true,
-      body: {action, value},
+      body: { action, value },
       headers: {
         Authorization: `Bearer ${this._token}`
       }
