@@ -7,6 +7,21 @@ import { debug, retry } from '@kobiton/core-util'
 import config from '../config'
 import api from '../utils/api'
 import TcpConnection from '../core/connection/tcp'
+import http, { createServer, request as _request } from "http";
+import { connect } from "net";
+import { parse } from "url";
+import { getPorts, nextPort } from 'portfinder'
+import { promisify } from "util";
+import { once } from "lodash";
+import httpProxy from 'http-proxy'
+
+const getPortsAsync = promisify(getPorts)
+const HOST_PORT_REGEX = /^([^:]+)(:([0-9]+))?$/
+
+const MIN_PORT = 10000
+const MAX_PORT = 49151 // 49152+ are ephemeral
+
+let basePort = MIN_PORT
 
 const requestAsync = BPromise.promisify(request, { multiArgs: true })
 
@@ -32,6 +47,104 @@ export default class Koby extends EventEmitter {
         this._token = token
         this._authInfo = { token, udid: deviceInfo.udid }
         this._sessionConnection = null
+        this._startProxyServer()
+    }
+
+    async _findPort(count = 1) {
+        // Handle race condition: assume 2 requests getting port for Appium.
+        // Before Appium starts, it's possible for getPortsAsync() to return the same
+        // port. Therefore, we need to increase basePort per call.
+        const host = '127.0.0.1'
+        const startPort = basePort
+
+        basePort += 100 + count
+        if (basePort > MAX_PORT) {
+            basePort = MIN_PORT
+        }
+
+        const ports = await getPortsAsync(count, { host, port: startPort })
+
+        // Although we increased basePort by a fairly big range, there's a chance
+        // the last port returned is larger than basePort if the range was mostly
+        // occupied. So need to check and set basePort accordingly.
+        const lastPort = ports[ports.length - 1]
+        if (lastPort >= basePort) {
+            basePort = lastPort + 1
+        }
+
+        return ports[0]
+    }
+
+    _getHostPortFromString(hostString, defaultPort) {
+        let host = hostString
+        let port = defaultPort
+
+        let result = HOST_PORT_REGEX.exec(hostString)
+        if (result) {
+            host = result[1]
+            if (result[2]) {
+                port = result[3]
+            }
+        }
+
+        return [host, port]
+    }
+
+    async _startProxyServer() {
+        const port = await this._findPort()
+        let proxyServer
+        const server = http.createServer((req, res) => {
+            const urlObj = parse(req.url)
+            const target = `${urlObj.protocol}//${urlObj.host}`
+
+            proxyServer = httpProxy.createProxyServer({})
+            proxyServer
+                .on('error', (err, req, res) => {
+                    if (err.code !== 'ENOTFOUND' && err.code !== 'ETIMEOUT') {
+                        debug.error(this._ns, err)
+                    }
+
+                    res.end()
+                })
+                .web(req, res, { target })
+        })
+
+        server
+            .on('connect', (req, socket, bodyhead) => {
+                const hostPort = this._getHostPortFromString(req.url, 443)
+                const hostDomain = hostPort[0]
+                const port = parseInt(hostPort[1])
+                const proxySocket = new net.Socket()
+
+                // Closes pipe sockets while getting error
+                proxySocket.on('error', () => socket && socket.removeAllListeners().destroy())
+                socket.on('error', () => proxySocket && proxySocket.removeAllListeners().destroy())
+
+                proxySocket.connect(port, hostDomain, () => {
+                    proxySocket.pipe(socket)
+                    socket.pipe(proxySocket)
+
+                    // Makes the pipes always keep alive
+                    proxySocket.setKeepAlive(true)
+                    socket.setKeepAlive(true)
+
+                    proxySocket.write(bodyhead)
+                    socket.write(`HTTP/${req.httpVersion} 200 Connection established\r\n\r\n`)
+                })
+            })
+            .listen(port, () => {
+                debug.log('Proxy server', `Listening on port ${port}`)
+            })
+
+        return once(() => {
+            proxyServer && proxyServer
+                .removeAllListeners()
+                .close()
+
+            server && server
+                .removeAllListeners()
+                .close()
+        })
     }
 
     async activate() {
@@ -84,9 +197,9 @@ export default class Koby extends EventEmitter {
     }
 
     async _handleMessage(message) {
-        debug.log(this._ns, `Receive message from hub: ${JSON.stringify(message)}`)
         const { START_MANUAL, STOP_MANUAL, START_AUTO } = enums.TEST_ACTIONS
         const { type, timeoutKey, quality, fps, deviceMetricCaptureInterval } = message
+        debug.log(this._ns, '_onControlConnectionMessage:', message)
 
         switch (type) {
             case START_AUTO:
@@ -102,16 +215,8 @@ export default class Koby extends EventEmitter {
                 }
                 catch (ignored) {
                     // Writes log for supporting investigating
-                    debug.error(this._ns, `Unhandled error while processing message ${START_MANUAL}`)
+                    debug.error(this._ns, `Unhandled error while processing message ${START_AUTO}`)
                     debug.error(this._ns, ignored)
-                }
-                break
-            case STOP_MANUAL:
-                try {
-                    await this._endSession()
-                }
-                catch (err) {
-                    debug.error(this._ns, 'Error while ending session on STOP_MANUAL message', err)
                 }
                 break
         }
@@ -121,10 +226,10 @@ export default class Koby extends EventEmitter {
         this._sessionConnection = new TcpConnection(type, this._hub, this._authInfo, connectionOptions)
         this._sessionConnection
             .on('message', :: this._onHubMessage)
+
         await this._sessionConnection.establish()
 
         this._updateStatus(enums.DEVICE_STATES.UTILIZING)
-        console.log('Start automation session')
     }
 
     async _onHubMessage(message) {

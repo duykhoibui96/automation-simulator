@@ -2,6 +2,8 @@ import {URL} from 'url'
 import wd from 'wd'
 import {debug} from '@kobiton/core-util'
 import config from '../config'
+import http from 'http'
+
 
 export default class Auto {
   constructor(deviceInfo) {
@@ -26,7 +28,7 @@ export default class Auto {
       protocol: apiUrl.protocol.replace(':', ''),
       host: apiUrl.hostname,
       port: apiUrl.port,
-      auth: `${config.username}:${config.apiKey}`
+      auth: `${config.username}:${config.apiKey}`,
     }
 
     let driver
@@ -53,7 +55,7 @@ export default class Auto {
         }
         throw err
       }
-      console.log('Connected')
+
       await driver.get('https://www.google.com')
         .waitForElementByName('q')
         .sendKeys('Kobiton')

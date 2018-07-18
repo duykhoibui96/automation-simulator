@@ -117,14 +117,14 @@ export default class Koby extends EventEmitter {
             enums.CONNECTION_TYPES.AUTO,
             {
               ...this._authInfo, appium: this._appium, deviceInfo: this._deviceInfo,
-              timeoutKey, tmpDir: this._tmpDir, javaHome: this._settings.android.jdk
+              timeoutKey
             },
             { json: false, reconnect: false }
           )
         }
         catch (ignored) {
           // Writes log for supporting investigating
-          debug.error(this._ns, `Unhandled error while processing message ${START_MANUAL}`)
+          debug.error(this._ns, `Unhandled error while processing message ${START_AUTO}`)
           debug.error(this._ns, ignored)
         }
         break
